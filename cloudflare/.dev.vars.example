@@ -1,0 +1,11 @@
+# Local Development Environment Variables
+# Copy this file to .dev.vars and fill in your actual API keys
+# .dev.vars is ignored by git for security
+
+# HuggingFace API Keys (comma-separated)
+# Get your keys at: https://huggingface.co/settings/tokens
+HF_KEYS=hf_yourkey1,hf_yourkey2,hf_yourkey3
+
+# Google Gemini API Keys (comma-separated)
+# Get your keys at: https://makersuite.google.com/app/apikey
+GEMINI_KEYS=AIzaYourKey1,AIzaYourKey2,AIzaYourKey3
