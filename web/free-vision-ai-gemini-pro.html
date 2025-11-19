@@ -395,34 +395,13 @@
 
         <script>
             // ============================================
-            // HIDDEN HF KEYS (Auto-rotation)
+            // CLOUDFLARE WORKER CONFIGURATION
             // ============================================
-            const keyParts = [
-                ["hf_", "fTAinKmHHLwEyVUQAFFz", "biISBgGFQYufxQ"],
-                ["hf_", "sfntVJBWEjIUacNMtbnw", "EpicKrbOPMsACo"],
-                ["hf_", "GrxJazjMhzWisvwmLbmO", "YajTLGMFhlGezl"]
-            ];
-            const hiddenHFKeys = keyParts.map(parts => parts.join(""));
-            let currentKeyIndex = 0;
-            let failedKeys = new Set();
+            // ⚠️ IMPORTANT: Replace this with your actual Cloudflare Worker URL
+            const WORKER_URL = 'https://ai-api-proxy.YOUR-SUBDOMAIN.workers.dev';
 
-            // ============================================
-            // HIDDEN GEMINI KEYS (Auto-rotation)
-            // ============================================
-            const geminiKeyParts = [
-                ["AIzaSyC", "trNOTjOV", "bKgJwNwgG80", "ZIUSVQ9fkYqbE"],
-                ["AIzaSyB", "l2AO6Wmo", "JHwIlnFg6i0", "tcbbSyYHnoStM"],
-                ["AIzaSyB", "wScrzLWo", "fcQMJjB4iQN", "AmNzBgfWyc7Rs"],
-                ["AIzaSyD", "OaFELikR", "XdJRjxslRtj", "_LUyFFiOEa2-E"],
-                ["AIzaSyD", "fNAWbpvk", "fEzXoXfkzpD", "Quj3SCbXLXEdw"],
-                ["AIzaSyC", "NO60AvMB", "spBCAK1Wgl", "Xikhhuja9OarFg"],
-                ["AIzaSyC", "s7Fgi3Mb", "H4qd6GNdBm", "3Yq4aQzSijApBI"],
-                ["AIzaSyD", "lQlD5QA4", "cUnaf93LFj", "FjHe1QnKZRVwGg"],
-                ["AIzaSyD", "ywVP6oaH", "YQCa60lz6-", "PnizD8zMw9bXiA"]
-            ];
-            const hiddenGeminiKeys = geminiKeyParts.map(parts => parts.join(""));
-            let currentGeminiKeyIndex = 0;
-            let failedGeminiKeys = new Set();
+            // For local development, uncomment this:
+            // const WORKER_URL = 'http://localhost:8787';
 
             // ============================================
             // STATE
@@ -529,63 +508,6 @@
                 document.getElementById('errorBox').innerHTML = '';
             }
 
-            // ============================================
-            // KEY ROTATION (HF)
-            // ============================================
-            function getNextHFKey() {
-                const userKey = document.getElementById('hfToken').value.trim();
-                if (userKey) return userKey;
-
-                const maxAttempts = hiddenHFKeys.length * 2;
-                let attempts = 0;
-
-                while (attempts < maxAttempts) {
-                    const key = hiddenHFKeys[currentKeyIndex];
-                    currentKeyIndex = (currentKeyIndex + 1) % hiddenHFKeys.length;
-
-                    if (!failedKeys.has(key)) {
-                        return key;
-                    }
-                    attempts++;
-                }
-
-                failedKeys.clear();
-                return hiddenHFKeys[0];
-            }
-
-            function markKeyFailed(key) {
-                failedKeys.add(key);
-                setTimeout(() => failedKeys.delete(key), 30000);
-            }
-
-            // ============================================
-            // KEY ROTATION (GEMINI)
-            // ============================================
-            function getNextGeminiKey() {
-                const userKey = document.getElementById('geminiToken').value.trim();
-                if (userKey) return userKey;
-
-                const maxAttempts = hiddenGeminiKeys.length * 2;
-                let attempts = 0;
-
-                while (attempts < maxAttempts) {
-                    const key = hiddenGeminiKeys[currentGeminiKeyIndex];
-                    currentGeminiKeyIndex = (currentGeminiKeyIndex + 1) % hiddenGeminiKeys.length;
-
-                    if (!failedGeminiKeys.has(key)) {
-                        return key;
-                    }
-                    attempts++;
-                }
-
-                failedGeminiKeys.clear();
-                return hiddenGeminiKeys[0];
-            }
-
-            function markGeminiKeyFailed(key) {
-                failedGeminiKeys.add(key);
-                setTimeout(() => failedGeminiKeys.delete(key), 30000);
-            }
 
             // ============================================
             // ANALYZE IMAGE
@@ -628,55 +550,37 @@
             }
 
             // ============================================
-            // FLORENCE-2 ANALYSIS
+            // FLORENCE-2 ANALYSIS (via Cloudflare Worker)
             // ============================================
             async function analyzeWithFlorence() {
                 const task = document.getElementById('taskSelect').value;
                 const taskPrompt = florenceTasks[task];
-                
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    try {
-                        const apiKey = getNextHFKey();
-                        
-                        const response = await fetch(
-                            'https://api-inference.huggingface.co/models/microsoft/Florence-2-large',
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': `Bearer ${apiKey}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    inputs: currentImageBase64,
-                                    parameters: {
-                                        prompt: taskPrompt
-                                    }
-                                })
+
+                try {
+                    const response = await fetch(`${WORKER_URL}/api/huggingface`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: 'microsoft/Florence-2-large',
+                            inputs: currentImageBase64,
+                            parameters: {
+                                prompt: taskPrompt
                             }
-                        );
+                        })
+                    });
 
-                        if (!response.ok) {
-                            const errorText = await response.text();
-                            markKeyFailed(apiKey);
-                            
-                            // Check if model is loading
-                            if (errorText.includes('loading') || response.status === 503) {
-                                if (attempt < 2) {
-                                    await new Promise(resolve => setTimeout(resolve, 3000));
-                                    continue;
-                                }
-                            }
-                            throw new Error(`API Error ${response.status}: ${errorText.substring(0, 100)}`);
-                        }
-
-                        const result = await response.json();
-                        displayFlorence2Result(result, task);
-                        return;
-
-                    } catch (error) {
-                        if (attempt === 2) throw error;
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `API Error ${response.status}`);
                     }
+
+                    const result = await response.json();
+                    displayFlorence2Result(result, task);
+
+                } catch (error) {
+                    throw new Error(`Cloudflare Worker Error: ${error.message}`);
                 }
             }
 
@@ -726,12 +630,12 @@
             }
 
             // ============================================
-            // GEMINI VISION ANALYSIS (2.5 PRO)
+            // GEMINI VISION ANALYSIS (via Cloudflare Worker)
             // ============================================
             async function analyzeWithGemini() {
                 const task = document.getElementById('taskSelect').value;
                 let prompt = 'Phân tích chi tiết hình ảnh này bằng tiếng Việt.';
-                
+
                 // Customize prompt based on task
                 if (task === 'caption') {
                     prompt = 'Mô tả ngắn gọn hình ảnh này bằng tiếng Việt (1-2 câu).';
@@ -743,81 +647,38 @@
                     prompt = 'Liệt kê tất cả các vật thể có trong hình ảnh này, mỗi vật thể trên 1 dòng.';
                 }
 
-                let lastError = null;
-                const maxAttempts = hiddenGeminiKeys.length; // Try all 9 keys
+                try {
+                    const response = await fetch(`${WORKER_URL}/api/gemini`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [
+                                    {
+                                        inline_data: {
+                                            mime_type: 'image/jpeg',
+                                            data: currentImageBase64
+                                        }
+                                    },
+                                    { text: prompt }
+                                ]
+                            }]
+                        })
+                    });
 
-                // Try all available keys
-                for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                    try {
-                        const apiKey = getNextGeminiKey();
-                        console.log(`🔑 Trying Gemini 2.5 Pro key ${attempt + 1}/${maxAttempts}...`);
-
-                        const response = await fetch(
-                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`,
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    contents: [{
-                                        parts: [
-                                            {
-                                                inline_data: {
-                                                    mime_type: 'image/jpeg',
-                                                    data: currentImageBase64
-                                                }
-                                            },
-                                            { text: prompt }
-                                        ]
-                                    }]
-                                })
-                            }
-                        );
-
-                        if (!response.ok) {
-                            const errorText = await response.text();
-                            markGeminiKeyFailed(apiKey);
-                            
-                            console.warn(`⚠️ Key ${attempt + 1} failed with ${response.status}`);
-                            
-                            // For 503 (overloaded), wait longer before next try
-                            if (response.status === 503 && attempt < maxAttempts - 1) {
-                                console.log('⏳ Server overloaded, waiting 3 seconds...');
-                                await new Promise(resolve => setTimeout(resolve, 3000));
-                                continue;
-                            }
-                            
-                            // For 429 (quota) or 403 (auth), immediately try next key
-                            if ((response.status === 429 || response.status === 403) && attempt < maxAttempts - 1) {
-                                console.log('🔄 Quota exceeded, trying next key...');
-                                await new Promise(resolve => setTimeout(resolve, 500));
-                                continue;
-                            }
-                            
-                            lastError = new Error(`Gemini Error ${response.status}: ${errorText.substring(0, 100)}`);
-                            continue;
-                        }
-
-                        const result = await response.json();
-                        console.log('✅ Gemini 2.5 Pro success with key', attempt + 1);
-                        displayGeminiResult(result);
-                        return; // Success!
-
-                    } catch (error) {
-                        console.error(`❌ Gemini attempt ${attempt + 1} failed:`, error);
-                        lastError = error;
-                        
-                        // Wait before next attempt
-                        if (attempt < maxAttempts - 1) {
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                        }
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `API Error ${response.status}`);
                     }
-                }
 
-                // All attempts failed
-                console.error('❌ All Gemini keys failed');
-                throw lastError || new Error('Tất cả Gemini keys đều thất bại. Vui lòng thử lại sau hoặc dùng Florence-2.');
+                    const result = await response.json();
+                    displayGeminiResult(result);
+
+                } catch (error) {
+                    throw new Error(`Cloudflare Worker Error: ${error.message}`);
+                }
             }
 
             function displayGeminiResult(result) {
