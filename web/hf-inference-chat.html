@@ -428,21 +428,17 @@
         </div>
 
         <script>
-            // Hidden API keys with automatic rotation (obfuscated)
-            const keyParts = [
-                ["hf_", "fTAinKmHHLwEyVUQAFFz", "biISBgGFQYufxQ"],
-                ["hf_", "sfntVJBWEjIUacNMtbnw", "EpicKrbOPMsACo"],
-                ["hf_", "GrxJazjMhzWisvwmLbmO", "YajTLGMFhlGezl"]
-            ];
+            // ============================================
+            // CLOUDFLARE WORKER CONFIGURATION
+            // ============================================
+            // ⚠️ IMPORTANT: Replace this with your actual Cloudflare Worker URL
+            const WORKER_URL = 'https://ai-api-proxy.YOUR-SUBDOMAIN.workers.dev';
 
-            // Reconstruct keys at runtime
-            const hiddenKeys = keyParts.map(parts => parts.join(""));
+            // For local development, uncomment this:
+            // const WORKER_URL = 'http://localhost:8787';
 
-            // Smart rotation state
-            let currentKeyIndex = 0;
-            let failedKeys = new Set();
+            // State
             let failedModels = new Set();
-            let useHiddenKeys = true; // Auto-enable hidden keys
 
             // Models theo tài liệu HF Inference Providers
             const models = {
@@ -479,46 +475,6 @@
             };
 
             let currentModel = "deepseek-r1";
-            let hfToken = "";
-
-            // Get next available API key
-            function getNextKey() {
-                // If user provided a token, use it
-                if (hfToken && hfToken.startsWith("hf_")) {
-                    return hfToken;
-                }
-
-                // Otherwise use hidden keys with rotation
-                if (!useHiddenKeys) return null;
-
-                // Find next working key
-                const maxAttempts = hiddenKeys.length * 2;
-                let attempts = 0;
-
-                while (attempts < maxAttempts) {
-                    const key = hiddenKeys[currentKeyIndex];
-                    currentKeyIndex = (currentKeyIndex + 1) % hiddenKeys.length;
-
-                    // Skip recently failed keys temporarily
-                    if (!failedKeys.has(key)) {
-                        return key;
-                    }
-                    attempts++;
-                }
-
-                // If all keys failed, reset and try again
-                failedKeys.clear();
-                return hiddenKeys[0];
-            }
-
-            // Mark key as failed temporarily
-            function markKeyFailed(key) {
-                failedKeys.add(key);
-                // Auto-recover failed keys after 30 seconds
-                setTimeout(() => {
-                    failedKeys.delete(key);
-                }, 30000);
-            }
 
             // Get next available model
             function getNextModel(currentKey) {
@@ -565,23 +521,13 @@
                 renderModels();
             }
 
-            // Check token input
+            // Token input is now optional (for display only)
             document
                 .getElementById("hfToken")
                 .addEventListener("input", function (e) {
-                    hfToken = e.target.value.trim();
                     const status = document.getElementById("tokenStatus");
-
-                    if (hfToken.startsWith("hf_") && hfToken.length > 20) {
-                        status.textContent = "✓ Sử dụng key của bạn";
-                        status.classList.add("valid");
-                    } else if (hfToken.length > 0) {
-                        status.textContent = "⚠ Định dạng key không đúng";
-                        status.classList.remove("valid");
-                    } else {
-                        status.textContent = "🔑 Sử dụng key tự động";
-                        status.classList.remove("valid");
-                    }
+                    status.textContent = "🔑 Sử dụng Cloudflare Worker (auto-rotate keys)";
+                    status.classList.add("valid");
                 });
 
             function addMsg(role, text, meta = "") {
@@ -626,152 +572,77 @@
                 document.getElementById("typing").classList.add("active");
 
                 const startTime = Date.now();
-                const maxRetries = 3; // Try up to 3 different keys
-                const maxModelRetries = 2; // Try up to 2 different models
+                const model = models[currentModel];
+                const modelId = model.id + policy;
 
-                let lastError = null;
-                let attemptedKeys = [];
-                let attemptedModels = [];
-                let tryModel = currentModel;
+                try {
+                    const msgDiv = addMsg("assistant", "", `🔄 Đang gửi tới ${model.name}...`);
+                    msgDiv.classList.add("streaming");
+                    const contentDiv = msgDiv.querySelector(".message-content");
+                    let fullText = "";
 
-                // Try different models if needed
-                for (let modelRetry = 0; modelRetry < maxModelRetries; modelRetry++) {
-                    // Try different keys for current model
-                    for (let keyRetry = 0; keyRetry < maxRetries; keyRetry++) {
-                        try {
-                            const apiKey = getNextKey();
-
-                            if (!apiKey) {
-                                throw new Error("Không có API key khả dụng");
+                    // Call Cloudflare Worker proxy
+                    const res = await fetch(`${WORKER_URL}/api/huggingface`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            model: modelId,
+                            inputs: prompt,
+                            parameters: {
+                                max_new_tokens: 2048,
+                                temperature: 0.7,
+                                return_full_text: false
                             }
+                        }),
+                    });
 
-                            attemptedKeys.push(apiKey.substring(0, 10) + "...");
-
-                            const model = models[tryModel];
-                            const modelId = model.id + policy;
-
-                            const msgDiv = addMsg("assistant", "", `🔄 Đang thử ${model.name}...`);
-                            msgDiv.classList.add("streaming");
-                            const contentDiv = msgDiv.querySelector(".message-content");
-                            let fullText = "";
-
-                            // Theo tài liệu HF: https://router.huggingface.co/v1/chat/completions
-                            const res = await fetch(
-                                "https://router.huggingface.co/v1/chat/completions",
-                                {
-                                    method: "POST",
-                                    headers: {
-                                        Authorization: `Bearer ${apiKey}`,
-                                        "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                        model: modelId,
-                                        messages: [
-                                            {
-                                                role: "user",
-                                                content: prompt,
-                                            },
-                                        ],
-                                        stream: true,
-                                        temperature: 0.7,
-                                        max_tokens: 2048,
-                                    }),
-                                },
-                            );
-
-                            if (!res.ok) {
-                                const errorText = await res.text();
-                                markKeyFailed(apiKey);
-                                throw new Error(
-                                    `API Error ${res.status}: ${errorText.substring(0, 100)}`,
-                                );
-                            }
-
-                            const reader = res.body.getReader();
-                            const decoder = new TextDecoder();
-
-                            while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-
-                                const chunk = decoder.decode(value);
-                                const lines = chunk.split("\n");
-
-                                for (const line of lines) {
-                                    if (line.startsWith("data: ")) {
-                                        const data = line.slice(6);
-                                        if (data === "[DONE]") continue;
-
-                                        try {
-                                            const json = JSON.parse(data);
-                                            const content =
-                                                json.choices[0]?.delta?.content || "";
-
-                                            if (content) {
-                                                fullText += content;
-                                                contentDiv.textContent = fullText;
-                                                document.getElementById(
-                                                    "chatMessages",
-                                                ).scrollTop = 999999;
-                                            }
-                                        } catch (e) {
-                                            // Ignore parse errors
-                                        }
-                                    }
-                                }
-                            }
-
-                            const duration = ((Date.now() - startTime) / 1000).toFixed(
-                                2,
-                            );
-                            const wordCount = fullText.trim().split(/\s+/).length;
-
-                            msgDiv.classList.remove("streaming");
-                            const metaDiv = msgDiv.querySelector(".message-meta");
-                            const keyHint = useHiddenKeys && !hfToken ? "🔑 Auto-key" : "🔑 Your key";
-                            metaDiv.textContent = `✓ ${model.name} • ${keyHint} • ${duration}s • ${wordCount} words`;
-
-                            // Success! Clear failed trackers
-                            failedKeys.clear();
-                            failedModels.clear();
-
-                            sendBtn.disabled = false;
-                            document.getElementById("typing").classList.remove("active");
-                            return; // Success, exit function
-
-                        } catch (error) {
-                            console.error(`Attempt ${keyRetry + 1} failed:`, error);
-                            lastError = error;
-
-                            // Remove failed message if it exists
-                            const lastMsg = document.querySelector(".chat-messages .message.assistant:last-child");
-                            if (lastMsg && lastMsg.classList.contains("streaming")) {
-                                lastMsg.remove();
-                            }
-
-                            // Continue to next key retry
-                        }
+                    if (!res.ok) {
+                        const errorData = await res.json();
+                        throw new Error(errorData.error || `API Error ${res.status}`);
                     }
 
-                    // All keys failed for this model, try next model
-                    attemptedModels.push(models[tryModel].name);
-                    failedModels.add(tryModel);
-                    tryModel = getNextModel(tryModel);
+                    const result = await res.json();
 
-                    // Update UI to show we're trying a different model
-                    if (modelRetry < maxModelRetries - 1) {
-                        currentModel = tryModel;
-                        renderModels();
+                    // Handle HuggingFace response format
+                    if (Array.isArray(result) && result[0]?.generated_text) {
+                        fullText = result[0].generated_text;
+                    } else if (result.generated_text) {
+                        fullText = result.generated_text;
+                    } else {
+                        fullText = JSON.stringify(result);
                     }
+
+                    contentDiv.textContent = fullText;
+
+                    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                    const wordCount = fullText.trim().split(/\s+/).length;
+
+                    msgDiv.classList.remove("streaming");
+                    const metaDiv = msgDiv.querySelector(".message-meta");
+                    metaDiv.textContent = `✓ ${model.name} • 🔑 Cloudflare Worker • ${duration}s • ${wordCount} words`;
+
+                    failedModels.clear();
+
+                    sendBtn.disabled = false;
+                    document.getElementById("typing").classList.remove("active");
+
+                } catch (error) {
+                    console.error("Error:", error);
+                    errorBox.innerHTML = `<div class="error"><strong>❌ Lỗi:</strong> ${error.message}</div>`;
+
+                    // Remove failed message if it exists
+                    const lastMsg = document.querySelector(".chat-messages .message.assistant:last-child");
+                    if (lastMsg && lastMsg.classList.contains("streaming")) {
+                        lastMsg.remove();
+                    }
+
+                    addMsg("assistant", `❌ Không thể kết nối. Vui lòng kiểm tra Cloudflare Worker URL.`);
+
+                    sendBtn.disabled = false;
+                    document.getElementById("typing").classList.remove("active");
                 }
-
-                // All retries failed
-                console.error("All retries failed:", lastError);
-                errorBox.innerHTML = `<div class="error"><strong>❌ Lỗi:</strong> Đã thử ${attemptedModels.length} model và ${attemptedKeys.length} key nhưng đều thất bại. ${lastError.message}</div>`;
-                addMsg("assistant", `❌ Không thể kết nối sau nhiều lần thử. Vui lòng thử lại sau.`);
-
-                sendBtn.disabled = false;
-                document.getElementById("typing").classList.remove("active");
             }
 
             function clearChat() {
