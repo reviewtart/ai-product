@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free AI Tools - Vision & Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .main-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .main-header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .main-header p {
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+
+        .tabs-container {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e0e0e0;
+            padding: 0 20px;
+        }
+
+        .tab {
+            padding: 18px 35px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            border: none;
+            background: transparent;
+            transition: all 0.3s;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .tab:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .tab.active {
+            color: #667eea;
+            background: white;
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .tab-icon {
+            font-size: 20px;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .iframe-wrapper {
+            width: 100%;
+            height: calc(100vh - 200px);
+            min-height: 600px;
+            border: none;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .info-pill {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin: 0 5px;
+        }
+
+        @media (max-width: 768px) {
+            .main-header h1 {
+                font-size: 1.8em;
+            }
+
+            .tab {
+                padding: 15px 20px;
+                font-size: 14px;
+            }
+
+            .tab-icon {
+                font-size: 16px;
+            }
+
+            .info-pill {
+                display: block;
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-header">
+            <h1>🚀 Free AI Tools Hub</h1>
+            <p>
+                <span class="info-pill">💎 Gemini 2.5 Pro Vision</span>
+                <span class="info-pill">🤗 HuggingFace Inference</span>
+                <span class="info-pill">100% FREE</span>
+            </p>
+        </div>
+
+        <div class="tabs-container">
+            <button class="tab active" onclick="switchTab(0)">
+                <span class="tab-icon">🖼️</span>
+                <span>Vision AI</span>
+            </button>
+            <button class="tab" onclick="switchTab(1)">
+                <span class="tab-icon">💬</span>
+                <span>Chat AI</span>
+            </button>
+        </div>
+
+        <div class="tab-content active" id="tab0">
+            <div class="iframe-wrapper">
+                <iframe src="free-vision-ai-gemini-pro.html" title="Free Vision AI"></iframe>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab1">
+            <div class="iframe-wrapper">
+                <iframe src="hf-inference-chat.html" title="HF Inference Chat"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(index) {
+            // Remove active from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+
+            tabs.forEach(tab => tab.classList.remove('active'));
+            contents.forEach(content => content.classList.remove('active'));
+
+            // Add active to selected
+            tabs[index].classList.add('active');
+            document.getElementById(`tab${index}`).classList.add('active');
+
+            // Save to localStorage
+            localStorage.setItem('activeTab', index);
+        }
+
+        // Restore last active tab on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedTab = localStorage.getItem('activeTab');
+            if (savedTab !== null) {
+                switchTab(parseInt(savedTab));
+            }
+        });
+    </script>
+</body>
+</html>

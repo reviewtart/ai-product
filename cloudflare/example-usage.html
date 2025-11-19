@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Example: Using Cloudflare Worker API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .section h2 {
+            color: #764ba2;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: inherit;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            border-left-color: #c62828;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Example: Using Cloudflare Worker API</h1>
+
+        <div class="info">
+            <strong>⚙️ Setup Required:</strong><br>
+            1. Deploy the Cloudflare Worker first: <code>cd cloudflare && wrangler deploy</code><br>
+            2. Update <code>WORKER_URL</code> below with your Worker URL<br>
+            3. Test the endpoints below
+        </div>
+
+        <!-- Section 1: HuggingFace Chat -->
+        <div class="section">
+            <h2>💬 Test HuggingFace Chat API</h2>
+            <input type="text" id="hfModel" value="meta-llama/Llama-3.3-70B-Instruct" placeholder="Model name">
+            <textarea id="hfInput" rows="3" placeholder="Enter your message...">Hello! Tell me a joke.</textarea>
+            <button onclick="testHuggingFace()">Send to HuggingFace</button>
+            <div id="hfResult"></div>
+        </div>
+
+        <!-- Section 2: Gemini Chat -->
+        <div class="section">
+            <h2>💎 Test Gemini Chat API</h2>
+            <textarea id="geminiInput" rows="3" placeholder="Enter your message...">Explain quantum computing in simple terms.</textarea>
+            <button onclick="testGemini()">Send to Gemini</button>
+            <div id="geminiResult"></div>
+        </div>
+
+        <!-- Section 3: Health Check -->
+        <div class="section">
+            <h2>🏥 Test Health Endpoint</h2>
+            <button onclick="testHealth()">Check Health</button>
+            <div id="healthResult"></div>
+        </div>
+    </div>
+
+    <script>
+        // ⚠️ IMPORTANT: Replace this with your actual Cloudflare Worker URL
+        const WORKER_URL = 'https://ai-api-proxy.your-subdomain.workers.dev';
+
+        // Alternative: Use local development server
+        // const WORKER_URL = 'http://localhost:8787';
+
+        /**
+         * Test HuggingFace API
+         */
+        async function testHuggingFace() {
+            const model = document.getElementById('hfModel').value;
+            const input = document.getElementById('hfInput').value;
+            const resultDiv = document.getElementById('hfResult');
+
+            resultDiv.innerHTML = '<span class="loading"></span> Sending...';
+
+            try {
+                const response = await fetch(`${WORKER_URL}/api/huggingface`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        inputs: input,
+                        parameters: {
+                            max_new_tokens: 256,
+                            temperature: 0.7,
+                            return_full_text: false
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const text = data[0]?.generated_text || JSON.stringify(data, null, 2);
+                    resultDiv.innerHTML = `<div class="result">✅ Success:\n${text}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Error: ${data.error || JSON.stringify(data)}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Network Error: ${error.message}</div>`;
+            }
+        }
+
+        /**
+         * Test Gemini API
+         */
+        async function testGemini() {
+            const input = document.getElementById('geminiInput').value;
+            const resultDiv = document.getElementById('geminiResult');
+
+            resultDiv.innerHTML = '<span class="loading"></span> Sending...';
+
+            try {
+                const response = await fetch(`${WORKER_URL}/api/gemini`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{ text: input }]
+                        }]
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data, null, 2);
+                    resultDiv.innerHTML = `<div class="result">✅ Success:\n${text}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Error: ${data.error || JSON.stringify(data)}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Network Error: ${error.message}</div>`;
+            }
+        }
+
+        /**
+         * Test Health Endpoint
+         */
+        async function testHealth() {
+            const resultDiv = document.getElementById('healthResult');
+
+            resultDiv.innerHTML = '<span class="loading"></span> Checking...';
+
+            try {
+                const response = await fetch(`${WORKER_URL}/health`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `<div class="result">✅ Health Check:\n${JSON.stringify(data, null, 2)}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="result error">❌ Error: ${JSON.stringify(data)}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Network Error: ${error.message}\n\nMake sure:\n1. Worker is deployed\n2. WORKER_URL is correct\n3. CORS is enabled</div>`;
+            }
+        }
+
+        // Show current configuration on load
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('📡 Worker URL:', WORKER_URL);
+            console.log('🔧 To change, update WORKER_URL constant in this file');
+        });
+    </script>
+</body>
+</html>

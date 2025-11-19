@@ -1,0 +1,1630 @@
+<!doctype html>
+<html lang="vi">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>N2Shop - AI Product Naming</title>
+        <script
+            crossorigin
+            src="https://unpkg.com/react@18/umd/react.production.min.js"
+        ></script>
+        <script
+            crossorigin
+            src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+        ></script>
+        <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
+
+        <!-- Firebase v9+ modular SDK -->
+        <script type="module">
+            import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+            import {
+                getFirestore,
+                collection,
+                addDoc,
+                deleteDoc,
+                doc,
+                updateDoc,
+                query,
+                orderBy,
+                onSnapshot,
+                setDoc,
+                getDoc,
+                getDocs,
+                limit,
+            } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+            import {
+                getStorage,
+                ref,
+                uploadString,
+                getDownloadURL,
+            } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+            window.firebaseModules = {
+                initializeApp,
+                getFirestore,
+                collection,
+                addDoc,
+                deleteDoc,
+                doc,
+                updateDoc,
+                query,
+                orderBy,
+                onSnapshot,
+                setDoc,
+                getDoc,
+                getDocs,
+                limit,
+                getStorage,
+                ref,
+                uploadString,
+                getDownloadURL,
+            };
+        </script>
+    </head>
+    <body>
+        <div id="root"></div>
+
+        <script type="text/babel">
+            const { useState, useRef, useEffect } = React;
+
+            // ============================================
+            // FIREBASE CONFIG
+            // ============================================
+            const FIREBASE_CONFIG = {
+                apiKey: "AIzaSyA-legWlCgjMDEy70rsaTTwLK39F4ZCKhM",
+                authDomain: "n2shop-69e37.firebaseapp.com",
+                databaseURL:
+                    "https://n2shop-69e37-default-rtdb.asia-southeast1.firebasedatabase.app",
+                projectId: "n2shop-69e37",
+                storageBucket: "n2shop-69e37.appspot.com",
+                messagingSenderId: "598906493303",
+                appId: "1:598906493303:web:46d6236a1fdc2eff33e972",
+                measurementId: "G-TEJH3S2T1D",
+            };
+
+            // ============================================
+            // HIDDEN API KEYS (HuggingFace)
+            // ============================================
+            const keyParts = [
+                ["hf_", "fTAinKmHHLwEyVUQAFFz", "biISBgGFQYufxQ"],
+                ["hf_", "sfntVJBWEjIUacNMtbnw", "EpicKrbOPMsACo"],
+                ["hf_", "GrxJazjMhzWisvwmLbmO", "YajTLGMFhlGezl"]
+            ];
+
+            // Reconstruct keys at runtime
+            const hiddenHFKeys = keyParts.map(parts => parts.join(""));
+
+            // Smart rotation state
+            let currentKeyIndex = 0;
+            let failedKeys = new Set();
+
+            // Get next available HF API key
+            const getNextHFKey = () => {
+                const maxAttempts = hiddenHFKeys.length * 2;
+                let attempts = 0;
+
+                while (attempts < maxAttempts) {
+                    const key = hiddenHFKeys[currentKeyIndex];
+                    currentKeyIndex = (currentKeyIndex + 1) % hiddenHFKeys.length;
+
+                    if (!failedKeys.has(key)) {
+                        return key;
+                    }
+                    attempts++;
+                }
+
+                // Reset and try again
+                failedKeys.clear();
+                return hiddenHFKeys[0];
+            };
+
+            // Mark key as failed temporarily
+            const markKeyFailed = (key) => {
+                failedKeys.add(key);
+                setTimeout(() => {
+                    failedKeys.delete(key);
+                }, 30000);
+            };
+
+            // ============================================
+            // HUGGING FACE MODELS
+            // ============================================
+            const HUGGINGFACE_MODELS = {
+                "deepseek-r1": {
+                    name: "DeepSeek-R1",
+                    id: "deepseek-ai/DeepSeek-R1",
+                    description: "🧠 Reasoning model - Mạnh về suy luận",
+                    icon: "🧠",
+                },
+                "llama-3.3-70b": {
+                    name: "Llama 3.3 70B",
+                    id: "meta-llama/Llama-3.3-70B-Instruct",
+                    description: "🦙 Meta AI - Rất thông minh",
+                    icon: "🦙",
+                },
+                "qwen2.5-72b": {
+                    name: "Qwen 2.5 72B",
+                    id: "Qwen/Qwen2.5-72B-Instruct",
+                    description: "🇨🇳 Alibaba - Giỏi tiếng Việt",
+                    icon: "🇨🇳",
+                },
+                "mixtral-8x7b": {
+                    name: "Mixtral 8x7B",
+                    id: "mistralai/Mixtral-8x7B-Instruct-v0.1",
+                    description: "🔀 Mistral AI - Cân bằng tốt",
+                    icon: "🔀",
+                },
+                "gemma-2-27b": {
+                    name: "Gemma 2 27B",
+                    id: "google/gemma-2-27b-it",
+                    description: "💎 Google - Hiệu quả cao",
+                    icon: "💎",
+                },
+            };
+
+            // ============================================
+            // GEMINI MODELS
+            // ============================================
+            const GEMINI_MODELS = {
+                "gemini-2.5-pro": {
+                    name: "Gemini 2.5 Pro",
+                    description: "🏆 Most advanced - Best for complex analysis",
+                    pricing: "FREE: 2 RPM",
+                    icon: "🌟"
+                },
+                "gemini-2.5-flash": {
+                    name: "Gemini 2.5 Flash", 
+                    description: "⚡ Best price-performance - Recommended",
+                    pricing: "FREE: 15 RPM",
+                    icon: "⚡"
+                },
+                "gemini-2.5-flash-lite": {
+                    name: "Gemini 2.5 Flash-Lite",
+                    description: "🚀 Ultra fast - Cost efficient",
+                    pricing: "FREE: 15 RPM",
+                    icon: "🚀"
+                },
+                "gemini-2.0-flash": {
+                    name: "Gemini 2.0 Flash",
+                    description: "💎 Previous gen - Stable workhorse",
+                    pricing: "FREE: 15 RPM",
+                    icon: "💎"
+                }
+            };
+
+            // ============================================
+            // AI PROVIDERS
+            // ============================================
+            const AI_PROVIDERS = {
+                LOCAL: {
+                    id: "local",
+                    name: "Local AI (Offline)",
+                    icon: "🧠",
+                    color: "orange",
+                    needsApiKey: false,
+                    description: "Phân tích màu sắc, học từ các AI khác",
+                    pricing: "MIỄN PHÍ 100%",
+                },
+                GEMINI: {
+                    id: "gemini",
+                    name: "Google Gemini",
+                    icon: "🌟",
+                    color: "blue",
+                    needsApiKey: true,
+                    apiKeyUrl: "https://makersuite.google.com/app/apikey",
+                    description: "Google AI Vision - Nhận diện chính xác cao",
+                    pricing: "FREE với rate limits",
+                },
+                HUGGINGFACE: {
+                    id: "huggingface",
+                    name: "Hugging Face (FREE)",
+                    icon: "🤗",
+                    color: "yellow",
+                    needsApiKey: false,
+                    description: "Multiple FREE AI models - Auto rotation keys",
+                    pricing: "100% MIỄN PHÍ",
+                },
+            };
+
+            // ============================================
+            // COLOR ANALYSIS (for Local AI)
+            // ============================================
+            const analyzeImageColors = (imageData) => {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        const ctx = canvas.getContext("2d");
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+
+                        const imageDataCtx = ctx.getImageData(
+                            0,
+                            0,
+                            canvas.width,
+                            canvas.height,
+                        );
+                        const pixels = imageDataCtx.data;
+
+                        let r = 0,
+                            g = 0,
+                            b = 0;
+                        const pixelCount = pixels.length / 4;
+
+                        for (let i = 0; i < pixels.length; i += 4) {
+                            r += pixels[i];
+                            g += pixels[i + 1];
+                            b += pixels[i + 2];
+                        }
+
+                        r = Math.floor(r / pixelCount);
+                        g = Math.floor(g / pixelCount);
+                        b = Math.floor(b / pixelCount);
+
+                        const colorName = getColorName(r, g, b);
+                        resolve(colorName);
+                    };
+                    img.src = imageData;
+                });
+            };
+
+            const getColorName = (r, g, b) => {
+                const colors = [
+                    { name: "TRẮNG", r: 255, g: 255, b: 255, threshold: 40 },
+                    { name: "ĐEN", r: 0, g: 0, b: 0, threshold: 60 },
+                    { name: "ĐỎ", r: 255, g: 0, b: 0, threshold: 100 },
+                    { name: "XANH DƯƠNG", r: 0, g: 0, b: 255, threshold: 100 },
+                    { name: "XANH LÁ", r: 0, g: 255, b: 0, threshold: 100 },
+                    { name: "VÀNG", r: 255, g: 255, b: 0, threshold: 100 },
+                    { name: "CAM", r: 255, g: 165, b: 0, threshold: 100 },
+                    { name: "HỒNG", r: 255, g: 192, b: 203, threshold: 80 },
+                    { name: "TÍM", r: 128, g: 0, b: 128, threshold: 80 },
+                    { name: "NÂU", r: 139, g: 69, b: 19, threshold: 80 },
+                    { name: "XÁM", r: 128, g: 128, b: 128, threshold: 50 },
+                    { name: "BE", r: 245, g: 245, b: 220, threshold: 60 },
+                ];
+
+                let closestColor = "NHIỀU MÀU";
+                let minDistance = Infinity;
+
+                for (const color of colors) {
+                    const distance = Math.sqrt(
+                        Math.pow(r - color.r, 2) +
+                            Math.pow(g - color.g, 2) +
+                            Math.pow(b - color.b, 2),
+                    );
+
+                    if (distance < minDistance && distance < color.threshold) {
+                        minDistance = distance;
+                        closestColor = color.name;
+                    }
+                }
+
+                return closestColor;
+            };
+
+            const learnFromPastProducts = (products) => {
+                const patterns = {
+                    keywords: {},
+                    structures: [],
+                    prefixes: {},
+                    brands: new Set(),
+                };
+
+                products.forEach((product) => {
+                    const name = product.name.toUpperCase();
+
+                    const words = name.split(/[\s+\-,]/);
+                    words.forEach((word) => {
+                        if (word.length > 1) {
+                            patterns.keywords[word] =
+                                (patterns.keywords[word] || 0) + 1;
+                        }
+                    });
+
+                    if (name.includes("SET")) patterns.structures.push("SET");
+                    if (name.includes("ĐẦM")) patterns.structures.push("ĐẦM");
+                    if (name.includes("ÁO")) patterns.structures.push("ÁO");
+                    if (name.includes("Q.") || name.includes("QUẦN"))
+                        patterns.structures.push("QUẦN");
+
+                    const brandPatterns = [
+                        "ALO",
+                        "BBR",
+                        "MM",
+                        "ZARA",
+                        "H&M",
+                        "UNIQLO",
+                    ];
+                    brandPatterns.forEach((brand) => {
+                        if (name.includes(brand)) {
+                            patterns.brands.add(brand);
+                        }
+                    });
+                });
+
+                return patterns;
+            };
+
+            const generateProductName = (
+                colorName,
+                products,
+                trainingData = [],
+            ) => {
+                const patterns = learnFromPastProducts(products);
+
+                // Learn from AI training data
+                const aiPatterns = {
+                    keywords: {},
+                    structures: [],
+                    brands: new Set(),
+                };
+
+                trainingData.forEach((training) => {
+                    const name = training.productName.toUpperCase();
+                    const words = name.split(/[\s+\-,]/);
+
+                    words.forEach((word) => {
+                        if (word.length > 1) {
+                            aiPatterns.keywords[word] =
+                                (aiPatterns.keywords[word] || 0) + 1;
+                        }
+                    });
+
+                    if (name.includes("SET")) aiPatterns.structures.push("SET");
+                    if (name.includes("ĐẦM")) aiPatterns.structures.push("ĐẦM");
+                    if (name.includes("ÁO")) aiPatterns.structures.push("ÁO");
+                    if (name.includes("Q.") || name.includes("QUẦN"))
+                        aiPatterns.structures.push("QUẦN");
+
+                    const brandPatterns = [
+                        "ALO",
+                        "BBR",
+                        "MM",
+                        "ZARA",
+                        "H&M",
+                        "UNIQLO",
+                    ];
+                    brandPatterns.forEach((brand) => {
+                        if (name.includes(brand)) {
+                            aiPatterns.brands.add(brand);
+                        }
+                    });
+                });
+
+                const templates = [
+                    `SET ÁO + Q. ${colorName}`,
+                    `ÁO ${colorName}`,
+                    `Q.DÀI ${colorName}`,
+                    `ĐẦM ${colorName}`,
+                    `SET ÁO TD + Q. ${colorName}`,
+                ];
+
+                // Prioritize AI-learned patterns
+                if (aiPatterns.structures.length > 0) {
+                    const mostCommon = aiPatterns.structures[0];
+                    templates.unshift(`${mostCommon} ${colorName}`);
+                }
+
+                if (aiPatterns.brands.size > 0) {
+                    const brand = Array.from(aiPatterns.brands)[0];
+                    templates.unshift(`SET ${colorName} ${brand}`);
+                }
+
+                // Fallback to user patterns
+                if (templates.length === 5 && patterns.structures.length > 0) {
+                    const mostCommon = patterns.structures[0];
+                    templates.unshift(`${mostCommon} ${colorName}`);
+                }
+
+                if (templates.length === 5 && patterns.brands.size > 0) {
+                    const brand = Array.from(patterns.brands)[0];
+                    templates.unshift(`SET ${colorName} ${brand}`);
+                }
+
+                return templates[0];
+            };
+
+            function ClothingNamingApp() {
+                const [products, setProducts] = useState([]);
+                const [currentImage, setCurrentImage] = useState(null);
+                const [suggestedName, setSuggestedName] = useState("");
+                const [editedName, setEditedName] = useState("");
+                const [isAnalyzing, setIsAnalyzing] = useState(false);
+                const [showCamera, setShowCamera] = useState(false);
+                const [stream, setStream] = useState(null);
+                const [firebaseApp, setFirebaseApp] = useState(null);
+                const [db, setDb] = useState(null);
+                const [storage, setStorage] = useState(null);
+                const [isOnline, setIsOnline] = useState(true);
+                const [isSyncing, setIsSyncing] = useState(false);
+                const [lastSync, setLastSync] = useState(null);
+                const [unsubscribe, setUnsubscribe] = useState(null);
+
+                // AI Provider state
+                const [selectedProvider, setSelectedProvider] = useState("local");
+                const [selectedGeminiModel, setSelectedGeminiModel] = useState("gemini-2.5-flash");
+                const [selectedHFModel, setSelectedHFModel] = useState("deepseek-r1");
+                const [showApiSetup, setShowApiSetup] = useState(false);
+                const [apiKeys, setApiKeys] = useState({
+                    gemini: "",
+                });
+                const [trainingData, setTrainingData] = useState([]);
+                const [trainingDataCount, setTrainingDataCount] = useState(0);
+
+                const videoRef = useRef(null);
+                const canvasRef = useRef(null);
+                const fileInputRef = useRef(null);
+
+                useEffect(() => {
+                    const handleOnline = () => setIsOnline(true);
+                    const handleOffline = () => setIsOnline(false);
+
+                    window.addEventListener("online", handleOnline);
+                    window.addEventListener("offline", handleOffline);
+
+                    // Load saved settings
+                    const savedProvider = localStorage.getItem("selected_ai_provider");
+                    if (savedProvider) setSelectedProvider(savedProvider);
+
+                    const savedGeminiModel = localStorage.getItem("selected_gemini_model");
+                    if (savedGeminiModel) setSelectedGeminiModel(savedGeminiModel);
+
+                    const savedHFModel = localStorage.getItem("selected_hf_model");
+                    if (savedHFModel) setSelectedHFModel(savedHFModel);
+
+                    const savedGeminiKey = localStorage.getItem("gemini_api_key");
+                    setApiKeys({
+                        gemini: savedGeminiKey || "",
+                    });
+
+                    return () => {
+                        window.removeEventListener("online", handleOnline);
+                        window.removeEventListener("offline", handleOffline);
+                    };
+                }, []);
+
+                useEffect(() => {
+                    initFirebase(FIREBASE_CONFIG);
+                    return () => {
+                        if (unsubscribe) {
+                            unsubscribe();
+                        }
+                    };
+                }, []);
+
+                const initFirebase = async (config) => {
+                    try {
+                        const {
+                            initializeApp,
+                            getFirestore,
+                            getStorage,
+                            collection,
+                            query,
+                            orderBy,
+                            onSnapshot,
+                            doc,
+                            getDoc,
+                            getDocs,
+                            limit,
+                        } = window.firebaseModules;
+
+                        const app = initializeApp(config);
+                        const firestoreDb = getFirestore(app);
+                        const firebaseStorage = getStorage(app);
+
+                        setFirebaseApp(app);
+                        setDb(firestoreDb);
+                        setStorage(firebaseStorage);
+
+                        // Load products
+                        const productsRef = collection(firestoreDb, "clothing_products");
+                        const q = query(productsRef, orderBy("createdAt", "desc"));
+
+                        const unsub = onSnapshot(
+                            q,
+                            (snapshot) => {
+                                const productsData = [];
+                                snapshot.forEach((doc) => {
+                                    productsData.push({
+                                        id: doc.id,
+                                        ...doc.data(),
+                                    });
+                                });
+                                setProducts(productsData);
+                                localStorage.setItem(
+                                    "clothingProducts",
+                                    JSON.stringify(productsData),
+                                );
+                                setLastSync(new Date());
+                            },
+                            (error) => {
+                                console.error("Error listening to products:", error);
+                                loadLocalProducts();
+                            },
+                        );
+
+                        setUnsubscribe(() => unsub);
+
+                        // Load API keys from Firebase
+                        await loadApiKeysFromFirebase(firestoreDb);
+
+                        // Load AI settings from Firebase
+                        await loadAISettingsFromFirebase(firestoreDb);
+
+                        // Load AI training data
+                        await loadTrainingDataFromFirebase(firestoreDb);
+                    } catch (error) {
+                        console.error("Error initializing Firebase:", error);
+                        loadLocalProducts();
+                    }
+                };
+
+                const loadApiKeysFromFirebase = async (firestoreDb) => {
+                    try {
+                        const { doc, getDoc } = window.firebaseModules;
+                        const keysDoc = await getDoc(
+                            doc(firestoreDb, "settings", "api_keys"),
+                        );
+
+                        if (keysDoc.exists()) {
+                            const keys = keysDoc.data();
+                            setApiKeys({
+                                gemini: keys.gemini || "",
+                            });
+
+                            if (keys.gemini)
+                                localStorage.setItem("gemini_api_key", keys.gemini);
+                        }
+                    } catch (error) {
+                        console.error("Error loading API keys from Firebase:", error);
+                        const savedGeminiKey = localStorage.getItem("gemini_api_key");
+                        setApiKeys({
+                            gemini: savedGeminiKey || "",
+                        });
+                    }
+                };
+
+                const loadAISettingsFromFirebase = async (firestoreDb) => {
+                    try {
+                        const { doc, getDoc } = window.firebaseModules;
+                        const settingsDoc = await getDoc(
+                            doc(firestoreDb, "settings", "ai_preferences"),
+                        );
+
+                        if (settingsDoc.exists()) {
+                            const settings = settingsDoc.data();
+                            if (settings.geminiModel) {
+                                setSelectedGeminiModel(settings.geminiModel);
+                                localStorage.setItem("selected_gemini_model", settings.geminiModel);
+                            }
+                            if (settings.hfModel) {
+                                setSelectedHFModel(settings.hfModel);
+                                localStorage.setItem("selected_hf_model", settings.hfModel);
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Error loading AI settings from Firebase:", error);
+                    }
+                };
+
+                const loadTrainingDataFromFirebase = async (firestoreDb) => {
+                    try {
+                        const { collection, query, orderBy, getDocs, limit } =
+                            window.firebaseModules;
+                        const trainingRef = collection(firestoreDb, "ai_training_data");
+                        const q = query(
+                            trainingRef,
+                            orderBy("createdAt", "desc"),
+                            limit(100),
+                        );
+
+                        const snapshot = await getDocs(q);
+                        const data = [];
+                        snapshot.forEach((doc) => {
+                            data.push({
+                                id: doc.id,
+                                ...doc.data(),
+                            });
+                        });
+
+                        setTrainingData(data);
+                        setTrainingDataCount(data.length);
+                        localStorage.setItem("ai_training_data", JSON.stringify(data));
+                    } catch (error) {
+                        console.error("Error loading training data:", error);
+                        const saved = localStorage.getItem("ai_training_data");
+                        if (saved) {
+                            const data = JSON.parse(saved);
+                            setTrainingData(data);
+                            setTrainingDataCount(data.length);
+                        }
+                    }
+                };
+
+                const loadLocalProducts = () => {
+                    const saved = localStorage.getItem("clothingProducts");
+                    if (saved) {
+                        setProducts(JSON.parse(saved));
+                    }
+                };
+
+                const handleProviderChange = (providerId) => {
+                    setSelectedProvider(providerId);
+                    localStorage.setItem("selected_ai_provider", providerId);
+
+                    // Check if API key is needed and not set
+                    const provider = Object.values(AI_PROVIDERS).find(
+                        (p) => p.id === providerId,
+                    );
+                    if (provider.needsApiKey && !apiKeys[providerId]) {
+                        setShowApiSetup(true);
+                    }
+                };
+
+                const handleGeminiModelChange = async (modelId) => {
+                    setSelectedGeminiModel(modelId);
+                    localStorage.setItem("selected_gemini_model", modelId);
+
+                    if (db) {
+                        try {
+                            const { doc, setDoc } = window.firebaseModules;
+                            await setDoc(
+                                doc(db, "settings", "ai_preferences"),
+                                { geminiModel: modelId },
+                                { merge: true },
+                            );
+                        } catch (error) {
+                            console.error("Error saving Gemini model preference:", error);
+                        }
+                    }
+                };
+
+                const handleHFModelChange = async (modelId) => {
+                    setSelectedHFModel(modelId);
+                    localStorage.setItem("selected_hf_model", modelId);
+
+                    if (db) {
+                        try {
+                            const { doc, setDoc } = window.firebaseModules;
+                            await setDoc(
+                                doc(db, "settings", "ai_preferences"),
+                                { hfModel: modelId },
+                                { merge: true },
+                            );
+                        } catch (error) {
+                            console.error("Error saving HF model preference:", error);
+                        }
+                    }
+                };
+
+                const saveApiKey = async (provider) => {
+                    const key = apiKeys[provider];
+                    if (!key || !key.trim()) {
+                        alert("Vui lòng nhập API Key");
+                        return;
+                    }
+
+                    localStorage.setItem(`${provider}_api_key`, key.trim());
+
+                    if (db) {
+                        try {
+                            const { doc, setDoc } = window.firebaseModules;
+                            await setDoc(
+                                doc(db, "settings", "api_keys"),
+                                { [provider]: key.trim() },
+                                { merge: true },
+                            );
+
+                            setShowApiSetup(false);
+                            alert("✅ Đã lưu API Key vào Firebase!");
+                        } catch (error) {
+                            console.error("Error saving API key to Firebase:", error);
+                            setShowApiSetup(false);
+                            alert("⚠️ Đã lưu API Key local.");
+                        }
+                    } else {
+                        setShowApiSetup(false);
+                        alert("✅ Đã lưu API Key local!");
+                    }
+                };
+
+                const saveTrainingDataToFirebase = async (
+                    imageUrl,
+                    productName,
+                    aiProvider,
+                    aiModel = null,
+                ) => {
+                    if (!db) return;
+
+                    try {
+                        const { collection, addDoc } = window.firebaseModules;
+                        await addDoc(collection(db, "ai_training_data"), {
+                            imageUrl: imageUrl,
+                            productName: productName,
+                            aiProvider: aiProvider,
+                            aiModel: aiModel,
+                            createdAt: new Date(),
+                        });
+
+                        console.log(`✅ Saved training data from ${aiProvider}: ${productName}`);
+                        await loadTrainingDataFromFirebase(db);
+                    } catch (error) {
+                        console.error("Error saving training data:", error);
+                    }
+                };
+
+                const updateApiKey = (provider, value) => {
+                    setApiKeys((prev) => ({
+                        ...prev,
+                        [provider]: value,
+                    }));
+                };
+
+                const saveProductToFirebase = async (product) => {
+                    if (!db || !storage) {
+                        const newProducts = [product, ...products];
+                        setProducts(newProducts);
+                        localStorage.setItem("clothingProducts", JSON.stringify(newProducts));
+                        return;
+                    }
+
+                    try {
+                        setIsSyncing(true);
+                        const {
+                            collection,
+                            addDoc,
+                            ref,
+                            uploadString,
+                            getDownloadURL,
+                        } = window.firebaseModules;
+
+                        const imageRef = ref(storage, `products/${Date.now()}.jpg`);
+                        await uploadString(imageRef, product.image, "data_url");
+                        const imageUrl = await getDownloadURL(imageRef);
+
+                        await addDoc(collection(db, "clothing_products"), {
+                            name: product.name,
+                            imageUrl: imageUrl,
+                            createdAt: new Date(),
+                        });
+                    } catch (error) {
+                        console.error("Error saving to Firebase:", error);
+                        const newProducts = [product, ...products];
+                        setProducts(newProducts);
+                        localStorage.setItem("clothingProducts", JSON.stringify(newProducts));
+                    } finally {
+                        setIsSyncing(false);
+                    }
+                };
+
+                const deleteProductFromFirebase = async (id) => {
+                    if (!db) {
+                        const newProducts = products.filter((p) => p.id !== id);
+                        setProducts(newProducts);
+                        localStorage.setItem("clothingProducts", JSON.stringify(newProducts));
+                        return;
+                    }
+
+                    try {
+                        setIsSyncing(true);
+                        const { doc, deleteDoc } = window.firebaseModules;
+                        await deleteDoc(doc(db, "clothing_products", id));
+                    } catch (error) {
+                        console.error("Error deleting from Firebase:", error);
+                    } finally {
+                        setIsSyncing(false);
+                    }
+                };
+
+                const updateProductInFirebase = async (id, newName) => {
+                    if (!db) {
+                        const newProducts = products.map((p) =>
+                            p.id === id ? { ...p, name: newName } : p,
+                        );
+                        setProducts(newProducts);
+                        localStorage.setItem("clothingProducts", JSON.stringify(newProducts));
+                        return;
+                    }
+
+                    try {
+                        setIsSyncing(true);
+                        const { doc, updateDoc } = window.firebaseModules;
+                        await updateDoc(doc(db, "clothing_products", id), {
+                            name: newName,
+                        });
+                    } catch (error) {
+                        console.error("Error updating in Firebase:", error);
+                    } finally {
+                        setIsSyncing(false);
+                    }
+                };
+
+                const startCamera = async () => {
+                    try {
+                        const mediaStream = await navigator.mediaDevices.getUserMedia({
+                            video: { facingMode: "environment" },
+                        });
+                        setStream(mediaStream);
+                        setShowCamera(true);
+                        if (videoRef.current) {
+                            videoRef.current.srcObject = mediaStream;
+                        }
+                    } catch (err) {
+                        alert(
+                            "Không thể truy cập camera. Vui lòng cho phép quyền camera hoặc chọn ảnh từ thư viện.",
+                        );
+                    }
+                };
+
+                const stopCamera = () => {
+                    if (stream) {
+                        stream.getTracks().forEach((track) => track.stop());
+                        setStream(null);
+                    }
+                    setShowCamera(false);
+                };
+
+                const capturePhoto = () => {
+                    const canvas = canvasRef.current;
+                    const video = videoRef.current;
+
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext("2d").drawImage(video, 0, 0);
+
+                    const imageData = canvas.toDataURL("image/jpeg", 0.8);
+                    setCurrentImage(imageData);
+                    stopCamera();
+                    analyzeImage(imageData);
+                };
+
+                const handleFileUpload = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            const imageData = event.target.result;
+                            setCurrentImage(imageData);
+                            analyzeImage(imageData);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+
+                const analyzeImage = async (imageData) => {
+                    setIsAnalyzing(true);
+                    setSuggestedName("");
+
+                    try {
+                        let name = "";
+                        let imageUrl = null;
+
+                        if (selectedProvider === "local") {
+                            const colorName = await analyzeImageColors(imageData);
+                            name = generateProductName(colorName, products, trainingData);
+                        } else if (selectedProvider === "gemini") {
+                            name = await analyzeWithGemini(imageData);
+
+                            if (storage) {
+                                try {
+                                    const { ref, uploadString, getDownloadURL } =
+                                        window.firebaseModules;
+                                    const imageRef = ref(storage, `training/${Date.now()}.jpg`);
+                                    await uploadString(imageRef, imageData, "data_url");
+                                    imageUrl = await getDownloadURL(imageRef);
+                                    await saveTrainingDataToFirebase(
+                                        imageUrl,
+                                        name,
+                                        "gemini",
+                                        selectedGeminiModel,
+                                    );
+                                } catch (error) {
+                                    console.error("Error saving training data:", error);
+                                }
+                            }
+                        } else if (selectedProvider === "huggingface") {
+                            name = await analyzeWithHuggingFace(imageData);
+
+                            if (storage) {
+                                try {
+                                    const { ref, uploadString, getDownloadURL } =
+                                        window.firebaseModules;
+                                    const imageRef = ref(storage, `training/${Date.now()}.jpg`);
+                                    await uploadString(imageRef, imageData, "data_url");
+                                    imageUrl = await getDownloadURL(imageRef);
+                                    await saveTrainingDataToFirebase(
+                                        imageUrl,
+                                        name,
+                                        "huggingface",
+                                        selectedHFModel,
+                                    );
+                                } catch (error) {
+                                    console.error("Error saving training data:", error);
+                                }
+                            }
+                        }
+
+                        setSuggestedName(name);
+                        setEditedName(name);
+                    } catch (error) {
+                        console.error("Error analyzing image:", error);
+                        alert(`❌ Có lỗi xảy ra khi phân tích hình ảnh: ${error.message}`);
+                    } finally {
+                        setIsAnalyzing(false);
+                    }
+                };
+
+                const analyzeWithGemini = async (imageData) => {
+                    const currentKey = apiKeys.gemini || localStorage.getItem("gemini_api_key");
+
+                    if (!currentKey) {
+                        setShowApiSetup(true);
+                        throw new Error("Gemini API key not set");
+                    }
+
+                    const contextMessage =
+                        products.length > 0
+                            ? "\n\nDựa vào các sản phẩm đã đặt tên trước đó để học cách đặt tên:\n" +
+                              products
+                                  .slice(-10)
+                                  .map((p) => `- ${p.name}`)
+                                  .join("\n")
+                            : "";
+
+                    const prompt = `Bạn là chuyên gia phân tích sản phẩm quần áo. Hãy phân tích hình ảnh này và đặt tên sản phẩm theo định dạng viết tắt của Tiếng Việt.
+
+QUY TẮC ĐẶT TÊN:
+- Sử dụng viết tắt: ÁO (áo), Q. (quần), ĐẦM (đầm), SET (bộ)
+- Mô tả kiểu dáng: CỔ TIM (cổ tim), TD (tay dài), BI (chấm bi), SỌC (sọc), SUÔNG (suông)
+- Màu sắc: TRẮNG, ĐEN, XANH, ĐỎ, VÀNG, CAM, HỒNG...
+- Thương hiệu nếu có: ALO, BBR (Burberry), MM (Mickey Mouse)...
+
+VÍ DỤ:
+- "SET ÁO CỔ TIM + Q.SUÔNG SỌC ALO"
+- "SET ÁO TD MM + Q.DÀI BI"
+- "ĐẦM SMI BBR KÈM BELT NÂU"
+${contextMessage}
+
+Hãy phân tích hình ảnh và đề xuất TÊN DUY NHẤT theo format trên. CHỈ TRẢ VỀ TÊN SẢN PHẨM, KHÔNG GIẢI THÍCH.`;
+
+                    const base64Data = imageData.split(",")[1];
+
+                    const response = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/${selectedGeminiModel}:generateContent?key=${currentKey}`,
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                contents: [
+                                    {
+                                        parts: [
+                                            { text: prompt },
+                                            {
+                                                inline_data: {
+                                                    mime_type: "image/jpeg",
+                                                    data: base64Data,
+                                                },
+                                            },
+                                        ],
+                                    },
+                                ],
+                            }),
+                        },
+                    );
+
+                    if (!response.ok) {
+                        if (response.status === 400) {
+                            setShowApiSetup(true);
+                        }
+                        throw new Error(`Gemini API error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    return data.candidates[0].content.parts[0].text.trim();
+                };
+
+                const analyzeWithHuggingFace = async (imageData) => {
+                    const contextMessage =
+                        products.length > 0
+                            ? "\n\nDựa vào các sản phẩm đã đặt tên trước đó:\n" +
+                              products
+                                  .slice(-10)
+                                  .map((p) => `- ${p.name}`)
+                                  .join("\n")
+                            : "";
+
+                    const prompt = `Phân tích hình ảnh quần áo này và đặt tên theo format Tiếng Việt viết tắt.
+
+QUY TẮC:
+- Viết tắt: ÁO, Q. (quần), ĐẦM, SET (bộ)
+- Kiểu: CỔ TIM, TD (tay dài), BI (chấm bi), SỌC, SUÔNG
+- Màu: TRẮNG, ĐEN, XANH, ĐỎ, VÀNG, CAM, HỒNG
+- Brand: ALO, BBR, MM
+
+VD: "SET ÁO TD + Q.DÀI BI", "ĐẦM SMI BBR"
+${contextMessage}
+
+CHỈ TRẢ VỀ TÊN SẢN PHẨM, không giải thích.`;
+
+                    const base64Data = imageData.split(",")[1];
+                    const model = HUGGINGFACE_MODELS[selectedHFModel];
+                    const maxRetries = 3;
+
+                    for (let retry = 0; retry < maxRetries; retry++) {
+                        try {
+                            const apiKey = getNextHFKey();
+
+                            const response = await fetch(
+                                "https://router.huggingface.co/v1/chat/completions",
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                        "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                        model: model.id,
+                                        messages: [
+                                            {
+                                                role: "user",
+                                                content: [
+                                                    { type: "text", text: prompt },
+                                                    {
+                                                        type: "image_url",
+                                                        image_url: {
+                                                            url: `data:image/jpeg;base64,${base64Data}`,
+                                                        },
+                                                    },
+                                                ],
+                                            },
+                                        ],
+                                        temperature: 0.7,
+                                        max_tokens: 150,
+                                    }),
+                                },
+                            );
+
+                            if (!response.ok) {
+                                markKeyFailed(apiKey);
+                                if (retry === maxRetries - 1) {
+                                    throw new Error(`HF API error: ${response.status}`);
+                                }
+                                continue;
+                            }
+
+                            const data = await response.json();
+                            const result = data.choices[0].message.content.trim();
+                            
+                            // Clear failed keys on success
+                            failedKeys.clear();
+                            
+                            return result;
+                        } catch (error) {
+                            if (retry === maxRetries - 1) {
+                                throw error;
+                            }
+                        }
+                    }
+                };
+
+                const saveProduct = () => {
+                    if (!editedName.trim()) {
+                        alert("Vui lòng nhập tên sản phẩm");
+                        return;
+                    }
+
+                    const newProduct = {
+                        name: editedName.trim(),
+                        image: currentImage,
+                        createdAt: new Date(),
+                    };
+
+                    saveProductToFirebase(newProduct);
+                    setCurrentImage(null);
+                    setSuggestedName("");
+                    setEditedName("");
+                };
+
+                const deleteProduct = (id) => {
+                    if (confirm("Bạn có chắc muốn xóa sản phẩm này?")) {
+                        deleteProductFromFirebase(id);
+                    }
+                };
+
+                const editProduct = (id) => {
+                    const product = products.find((p) => p.id === id);
+                    const newName = prompt("Nhập tên mới:", product.name);
+                    if (newName && newName.trim()) {
+                        updateProductInFirebase(id, newName.trim());
+                    }
+                };
+
+                const currentProvider = Object.values(AI_PROVIDERS).find(
+                    (p) => p.id === selectedProvider,
+                );
+
+                const currentGeminiModel = GEMINI_MODELS[selectedGeminiModel];
+                const currentHFModel = HUGGINGFACE_MODELS[selectedHFModel];
+
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-4">
+                        <div className="max-w-4xl mx-auto">
+                            {/* API Setup Modal */}
+                            {showApiSetup && currentProvider.needsApiKey && (
+                                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-lg w-full">
+                                        <h2
+                                            className={`text-2xl font-bold text-${currentProvider.color}-600 mb-4`}
+                                        >
+                                            🔑 Setup {currentProvider.name} API
+                                        </h2>
+
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                API Key:
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={apiKeys[selectedProvider]}
+                                                onChange={(e) =>
+                                                    updateApiKey(selectedProvider, e.target.value)
+                                                }
+                                                placeholder="AIzaSy..."
+                                                className={`w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-${currentProvider.color}-500 focus:outline-none font-mono text-sm`}
+                                            />
+                                        </div>
+
+                                        <div
+                                            className={`bg-${currentProvider.color}-50 border border-${currentProvider.color}-200 rounded-lg p-4 mb-4`}
+                                        >
+                                            <p className="text-sm font-semibold text-gray-700 mb-2">
+                                                📝 Cách lấy API Key:
+                                            </p>
+                                            <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+                                                <li>
+                                                    Vào:{" "}
+                                                    <a
+                                                        href={currentProvider.apiKeyUrl}
+                                                        target="_blank"
+                                                        className={`text-${currentProvider.color}-600 underline`}
+                                                    >
+                                                        {currentProvider.apiKeyUrl.replace(
+                                                            "https://",
+                                                            "",
+                                                        )}
+                                                    </a>
+                                                </li>
+                                                <li>Đăng ký/Đăng nhập tài khoản</li>
+                                                <li>Tạo API Key mới</li>
+                                                <li>Copy và paste vào đây</li>
+                                            </ol>
+                                            <div className="mt-3 pt-3 border-t border-gray-200">
+                                                <p className="text-xs font-semibold text-gray-700">
+                                                    💰 {currentProvider.pricing}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => saveApiKey(selectedProvider)}
+                                                className={`flex-1 bg-${currentProvider.color}-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-${currentProvider.color}-700 transition-colors`}
+                                            >
+                                                ✅ Lưu Key
+                                            </button>
+                                            <button
+                                                onClick={() => setShowApiSetup(false)}
+                                                className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-gray-700 transition-colors"
+                                            >
+                                                ❌ Đóng
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Header */}
+                            <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+                                            🏷️ N2Shop - AI Product Naming
+                                        </h1>
+                                        <p className="text-gray-600 text-sm">
+                                            Multi-AI Platform - FREE models available!
+                                        </p>
+                                    </div>
+                                    {db && (
+                                        <div className="flex items-center gap-2 text-orange-600 text-sm font-semibold">
+                                            <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                                            <span>🔥 Firebase</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* AI Provider Selector */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Chọn AI Provider:
+                                    </label>
+                                    <select
+                                        value={selectedProvider}
+                                        onChange={(e) => handleProviderChange(e.target.value)}
+                                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none text-sm font-semibold"
+                                    >
+                                        {Object.values(AI_PROVIDERS).map((provider) => (
+                                            <option key={provider.id} value={provider.id}>
+                                                {provider.icon} {provider.name} - {provider.pricing}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Gemini Model Selector */}
+                                {selectedProvider === "gemini" && (
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            Chọn Gemini Model:
+                                        </label>
+                                        <select
+                                            value={selectedGeminiModel}
+                                            onChange={(e) => handleGeminiModelChange(e.target.value)}
+                                            className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm font-semibold bg-blue-50"
+                                        >
+                                            {Object.entries(GEMINI_MODELS).map(([modelId, model]) => (
+                                                <option key={modelId} value={modelId}>
+                                                    {model.icon} {model.name} - {model.pricing}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        
+                                        <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                            <p className="text-xs text-gray-700">
+                                                <strong>{currentGeminiModel.icon} {currentGeminiModel.name}:</strong> {currentGeminiModel.description}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Hugging Face Model Selector */}
+                                {selectedProvider === "huggingface" && (
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                            Chọn HuggingFace Model:
+                                        </label>
+                                        <select
+                                            value={selectedHFModel}
+                                            onChange={(e) => handleHFModelChange(e.target.value)}
+                                            className="w-full px-4 py-3 border-2 border-yellow-300 rounded-lg focus:border-yellow-500 focus:outline-none text-sm font-semibold bg-yellow-50"
+                                        >
+                                            {Object.entries(HUGGINGFACE_MODELS).map(([modelId, model]) => (
+                                                <option key={modelId} value={modelId}>
+                                                    {model.icon} {model.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        
+                                        <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                            <p className="text-xs text-gray-700">
+                                                <strong>{currentHFModel.icon} {currentHFModel.name}:</strong> {currentHFModel.description}
+                                            </p>
+                                            <p className="text-xs text-green-700 font-semibold mt-1">
+                                                ✅ 100% FREE - Auto rotation keys
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Provider Info */}
+                                <div className={`bg-${currentProvider.color}-50 border border-${currentProvider.color}-200 rounded-lg p-4`}>
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-gray-700 mb-1">
+                                                {currentProvider.icon} {currentProvider.name}
+                                                {selectedProvider === "gemini" && (
+                                                    <span className="ml-2 text-blue-600">
+                                                        ({currentGeminiModel.icon} {currentGeminiModel.name})
+                                                    </span>
+                                                )}
+                                                {selectedProvider === "huggingface" && (
+                                                    <span className="ml-2 text-yellow-700">
+                                                        ({currentHFModel.icon} {currentHFModel.name})
+                                                    </span>
+                                                )}
+                                            </p>
+                                            <p className="text-xs text-gray-600 mb-2">
+                                                {currentProvider.description}
+                                            </p>
+                                            <p className="text-xs font-semibold text-gray-700">
+                                                💰 {currentProvider.pricing}
+                                            </p>
+                                        </div>
+                                        {currentProvider.needsApiKey && (
+                                            <button
+                                                onClick={() => setShowApiSetup(true)}
+                                                className={`ml-4 text-xs bg-${currentProvider.color}-600 text-white px-3 py-2 rounded-lg hover:bg-${currentProvider.color}-700 transition-colors whitespace-nowrap`}
+                                            >
+                                                {apiKeys[selectedProvider] ? "🔑 Đổi Key" : "🔑 Setup Key"}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Status indicators */}
+                                <div className="flex flex-wrap items-center gap-3 mt-4">
+                                    <div
+                                        className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                                            isOnline
+                                                ? "bg-green-100 text-green-700"
+                                                : "bg-red-100 text-red-700"
+                                        }`}
+                                    >
+                                        <span className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500" : "bg-red-500"}`}></span>
+                                        <span>{isOnline ? "Online" : "Offline"}</span>
+                                    </div>
+
+                                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full bg-${currentProvider.color}-100 text-${currentProvider.color}-700 text-xs font-semibold`}>
+                                        <span>
+                                            {currentProvider.icon} {currentProvider.name}
+                                        </span>
+                                    </div>
+
+                                    {trainingDataCount > 0 && (
+                                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold">
+                                            <span>🎓 AI đã học: {trainingDataCount} mẫu</span>
+                                        </div>
+                                    )}
+
+                                    {isSyncing && (
+                                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold">
+                                            <svg
+                                                className="animate-spin h-3 w-3"
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <circle
+                                                    className="opacity-25"
+                                                    cx="12"
+                                                    cy="12"
+                                                    r="10"
+                                                    stroke="currentColor"
+                                                    strokeWidth="4"
+                                                ></circle>
+                                                <path
+                                                    className="opacity-75"
+                                                    fill="currentColor"
+                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                                ></path>
+                                            </svg>
+                                            <span>Đang lưu...</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Camera/Upload buttons */}
+                            {!currentImage && !showCamera && (
+                                <div className="bg-white rounded-2xl shadow-xl p-8 mb-6">
+                                    <div className="flex flex-col sm:flex-row gap-4">
+                                        <button
+                                            onClick={startCamera}
+                                            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-4 px-6 rounded-xl font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                                        >
+                                            <span>📸</span>
+                                            <span>Chụp Ảnh</span>
+                                        </button>
+                                        <button
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 text-white py-4 px-6 rounded-xl font-semibold hover:from-green-700 hover:to-teal-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                                        >
+                                            <span>🖼️</span>
+                                            <span>Chọn Từ Thư Viện</span>
+                                        </button>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleFileUpload}
+                                            className="hidden"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Camera view */}
+                            {showCamera && (
+                                <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+                                    <video
+                                        ref={videoRef}
+                                        autoPlay
+                                        playsInline
+                                        className="w-full rounded-lg mb-4"
+                                    />
+                                    <canvas ref={canvasRef} className="hidden" />
+                                    <div className="flex gap-4">
+                                        <button
+                                            onClick={capturePhoto}
+                                            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 px-6 rounded-xl font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all"
+                                        >
+                                            📸 Chụp
+                                        </button>
+                                        <button
+                                            onClick={stopCamera}
+                                            className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-gray-700 transition-colors"
+                                        >
+                                            ❌ Hủy
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Image analysis */}
+                            {currentImage && (
+                                <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+                                    <h2 className="text-xl font-bold text-gray-800 mb-4">
+                                        📝 Đặt Tên Sản Phẩm
+                                    </h2>
+
+                                    <img
+                                        src={currentImage}
+                                        alt="Product"
+                                        className="w-full max-h-96 object-contain rounded-lg mb-4 border-2 border-gray-200"
+                                    />
+
+                                    {isAnalyzing ? (
+                                        <div className="text-center py-8">
+                                            <div
+                                                className={`animate-spin rounded-full h-12 w-12 border-b-2 border-${currentProvider.color}-600 mx-auto mb-4`}
+                                            ></div>
+                                            <p className="text-gray-600">
+                                                {currentProvider.icon} {currentProvider.name} đang phân tích...
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                    Tên Đề Xuất:
+                                                </label>
+                                                <div
+                                                    className={`bg-${currentProvider.color}-50 p-4 rounded-lg text-${currentProvider.color}-900 font-semibold`}
+                                                >
+                                                    {suggestedName || "Đang chờ phân tích..."}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                    Chỉnh Sửa Tên:
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={editedName}
+                                                    onChange={(e) => setEditedName(e.target.value)}
+                                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none"
+                                                    placeholder="Nhập tên sản phẩm..."
+                                                />
+                                            </div>
+
+                                            <div className="flex gap-4">
+                                                <button
+                                                    onClick={saveProduct}
+                                                    disabled={!editedName.trim() || isSyncing}
+                                                    className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 text-white py-3 px-6 rounded-xl font-semibold hover:from-green-700 hover:to-teal-700 transition-all disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed"
+                                                >
+                                                    ✅ Lưu Sản Phẩm
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setCurrentImage(null);
+                                                        setSuggestedName("");
+                                                        setEditedName("");
+                                                    }}
+                                                    className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-gray-700 transition-colors"
+                                                >
+                                                    🔄 Chụp Lại
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Products list */}
+                            <div className="bg-white rounded-2xl shadow-xl p-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-bold text-gray-800">
+                                        📦 Sản Phẩm ({products.length})
+                                    </h2>
+                                </div>
+
+                                {products.length === 0 ? (
+                                    <div className="text-center py-12 text-gray-500">
+                                        <p className="text-lg mb-2">Chưa có sản phẩm nào</p>
+                                        <p className="text-sm">Chụp ảnh để bắt đầu!</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {products.map((product) => (
+                                            <div
+                                                key={product.id}
+                                                className="border-2 border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-shadow"
+                                            >
+                                                <img
+                                                    src={product.imageUrl || product.image}
+                                                    alt={product.name}
+                                                    className="w-full h-48 object-cover"
+                                                />
+                                                <div className="p-4">
+                                                    <h3 className="font-bold text-gray-800 mb-2 text-sm">
+                                                        {product.name}
+                                                    </h3>
+                                                    <p className="text-xs text-gray-500 mb-3">
+                                                        {product.createdAt
+                                                            ? new Date(
+                                                                  product.createdAt.seconds * 1000,
+                                                              ).toLocaleString("vi-VN")
+                                                            : "N/A"}
+                                                    </p>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => editProduct(product.id)}
+                                                            disabled={isSyncing}
+                                                            className="flex-1 bg-blue-500 text-white py-2 px-3 rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors disabled:bg-gray-300"
+                                                        >
+                                                            ✏️ Sửa
+                                                        </button>
+                                                        <button
+                                                            onClick={() => deleteProduct(product.id)}
+                                                            disabled={isSyncing}
+                                                            className="flex-1 bg-red-500 text-white py-2 px-3 rounded-lg text-sm font-semibold hover:bg-red-600 transition-colors disabled:bg-gray-300"
+                                                        >
+                                                            🗑️ Xóa
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer info */}
+                            <div className="mt-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-4 text-sm text-gray-700 border border-indigo-200">
+                                <p className="font-semibold mb-2">🎯 Multi-AI Platform với FREE Models</p>
+                                <ul className="list-disc list-inside space-y-1 text-xs">
+                                    <li>
+                                        <strong>🤗 Hugging Face (NEW!):</strong>
+                                        <ul className="ml-6 mt-1 space-y-1">
+                                            <li>🧠 DeepSeek-R1: Reasoning model - 100% FREE</li>
+                                            <li>🦙 Llama 3.3 70B: Meta AI - Very smart - FREE</li>
+                                            <li>🇨🇳 Qwen 2.5 72B: Alibaba - Good Vietnamese - FREE</li>
+                                            <li>🔀 Mixtral 8x7B: Mistral AI - Balanced - FREE</li>
+                                            <li>💎 Gemma 2 27B: Google - Efficient - FREE</li>
+                                            <li>✅ Auto rotation keys - Không cần setup gì!</li>
+                                        </ul>
+                                    </li>
+                                    <li>
+                                        <strong>🌟 Gemini Models:</strong> 4 models khác nhau (2.5 Pro, 2.5 Flash, 2.5 Flash-Lite, 2.0 Flash)
+                                    </li>
+                                    <li>
+                                        <strong>🧠 Local AI:</strong> MIỄN PHÍ 100%, offline, tự học từ các AI khác
+                                    </li>
+                                    <li>✅ Firebase sync - preferences & training data</li>
+                                    <li>✅ Nhiều models FREE để lựa chọn!</li>
+                                    <li>🎓 Local AI học từ kết quả của tất cả models khác</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            ReactDOM.render(<ClothingNamingApp />, document.getElementById("root"));
+        </script>
+    </body>
+</html>

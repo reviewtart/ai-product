@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="vi">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Hugging Face Inference Providers</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #ffd93d 0%, #f57d1f 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                overflow: hidden;
+            }
+
+            .header {
+                background: linear-gradient(135deg, #ffd93d 0%, #f57d1f 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+            }
+
+            .header h1 {
+                font-size: 2em;
+                margin-bottom: 10px;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+            }
+
+            .info-banner {
+                background: #e3f2fd;
+                border-left: 4px solid #2196f3;
+                padding: 15px 20px;
+                margin: 20px;
+                border-radius: 8px;
+            }
+
+            .info-banner strong {
+                color: #1976d2;
+            }
+
+            .info-banner a {
+                color: #1976d2;
+                text-decoration: none;
+                font-weight: 600;
+            }
+
+            .info-banner a:hover {
+                text-decoration: underline;
+            }
+
+            .content {
+                display: grid;
+                grid-template-columns: 320px 1fr;
+                gap: 0;
+                min-height: 600px;
+            }
+
+            .sidebar {
+                background: #f8f9fa;
+                padding: 20px;
+                border-right: 1px solid #e0e0e0;
+                overflow-y: auto;
+                max-height: calc(100vh - 200px);
+            }
+
+            .main-content {
+                padding: 30px;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .section-title {
+                font-size: 14px;
+                font-weight: 600;
+                color: #f57d1f;
+                margin-bottom: 12px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .provider-item {
+                padding: 12px;
+                margin-bottom: 8px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.3s;
+                border: 2px solid transparent;
+            }
+
+            .provider-item:hover {
+                background: white;
+                border-color: #ffd93d;
+            }
+
+            .provider-item.active {
+                background: linear-gradient(135deg, #ffd93d 0%, #f57d1f 100%);
+                color: white;
+                border-color: #f57d1f;
+            }
+
+            .provider-item h4 {
+                font-size: 13px;
+                margin-bottom: 4px;
+            }
+
+            .provider-item small {
+                font-size: 11px;
+                opacity: 0.8;
+            }
+
+            .badge {
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 10px;
+                font-size: 9px;
+                margin-top: 5px;
+                font-weight: 600;
+            }
+
+            .badge-free {
+                background: #4caf50;
+                color: white;
+            }
+            .badge-fast {
+                background: #2196f3;
+                color: white;
+            }
+            .badge-cheap {
+                background: #9c27b0;
+                color: white;
+            }
+
+            .token-input {
+                margin-bottom: 20px;
+            }
+
+            .token-input input {
+                width: 100%;
+                padding: 10px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                font-size: 13px;
+            }
+
+            .token-input input:focus {
+                outline: none;
+                border-color: #ffd93d;
+            }
+
+            .token-status {
+                font-size: 11px;
+                margin-top: 5px;
+                color: #666;
+            }
+
+            .token-status.valid {
+                color: #4caf50;
+            }
+
+            .chat-container {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                border: 2px solid #e0e0e0;
+                border-radius: 10px;
+                overflow: hidden;
+                background: #fafafa;
+            }
+
+            .chat-messages {
+                flex: 1;
+                padding: 20px;
+                overflow-y: auto;
+                max-height: 450px;
+            }
+
+            .message {
+                margin-bottom: 15px;
+                padding: 12px 16px;
+                border-radius: 10px;
+                max-width: 85%;
+                animation: slideIn 0.3s ease;
+            }
+
+            @keyframes slideIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .message.user {
+                background: linear-gradient(135deg, #ffd93d 0%, #f57d1f 100%);
+                color: white;
+                margin-left: auto;
+            }
+
+            .message.assistant {
+                background: white;
+                border: 1px solid #e0e0e0;
+            }
+
+            .message.streaming {
+                border-left: 3px solid #f57d1f;
+            }
+
+            .message-content {
+                white-space: pre-wrap;
+                line-height: 1.6;
+                word-wrap: break-word;
+            }
+
+            .message-meta {
+                font-size: 10px;
+                opacity: 0.7;
+                margin-top: 8px;
+            }
+
+            .typing {
+                display: none;
+                padding: 10px;
+            }
+
+            .typing.active {
+                display: block;
+            }
+
+            .typing span {
+                height: 8px;
+                width: 8px;
+                background: #f57d1f;
+                border-radius: 50%;
+                display: inline-block;
+                margin: 0 2px;
+                animation: bounce 1.4s infinite ease-in-out;
+            }
+
+            .typing span:nth-child(2) {
+                animation-delay: -0.16s;
+            }
+
+            @keyframes bounce {
+                0%,
+                80%,
+                100% {
+                    transform: scale(0);
+                }
+                40% {
+                    transform: scale(1);
+                }
+            }
+
+            .input-area {
+                padding: 20px;
+                background: white;
+                border-top: 1px solid #e0e0e0;
+            }
+
+            textarea {
+                width: 100%;
+                padding: 12px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                font-size: 14px;
+                resize: none;
+                min-height: 80px;
+                font-family: inherit;
+            }
+
+            textarea:focus {
+                outline: none;
+                border-color: #ffd93d;
+            }
+
+            .buttons {
+                display: flex;
+                gap: 10px;
+                margin-top: 10px;
+            }
+
+            .btn {
+                background: linear-gradient(135deg, #ffd93d 0%, #f57d1f 100%);
+                color: white;
+                padding: 12px 30px;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: transform 0.2s;
+                flex: 1;
+            }
+
+            .btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(245, 125, 31, 0.3);
+            }
+
+            .btn:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+
+            .btn-clear {
+                background: #6c757d;
+                flex: 0.3;
+            }
+
+            .error {
+                background: #fee;
+                border-left: 4px solid #f44;
+                padding: 12px;
+                border-radius: 5px;
+                color: #c33;
+                margin-bottom: 15px;
+                font-size: 13px;
+            }
+
+            @media (max-width: 768px) {
+                .content {
+                    grid-template-columns: 1fr;
+                }
+                .sidebar {
+                    border-right: none;
+                    border-bottom: 1px solid #e0e0e0;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🤗 Hugging Face Inference Providers</h1>
+                <p>OpenAI-Compatible API with Multiple Providers</p>
+            </div>
+            
+            <div class="content">
+                <div class="sidebar">
+                    <div class="section-title">🔑 Authentication</div>
+                    <div class="token-input">
+                        <input
+                            type="password"
+                            id="hfToken"
+                            placeholder="(Optional) Paste your HF Token to use custom key..."
+                        />
+                        <div class="token-status" id="tokenStatus">
+                            🔑 Sử dụng key tự động
+                        </div>
+                    </div>
+
+                    <div class="section-title">🤖 Select Model</div>
+                    <div id="modelList"></div>
+
+                    <div class="section-title" style="margin-top: 20px">
+                        ⚙️ Provider Policy
+                    </div>
+                    <select
+                        id="providerPolicy"
+                        style="
+                            width: 100%;
+                            padding: 8px;
+                            border-radius: 6px;
+                            border: 2px solid #e0e0e0;
+                            margin-bottom: 20px;
+                        "
+                    >
+                        <option value="">Auto (First available)</option>
+                        <option value=":fastest">⚡ Fastest</option>
+                        <option value=":cheapest">💰 Cheapest</option>
+                    </select>
+
+                    <button
+                        class="btn btn-clear"
+                        style="width: 100%"
+                        onclick="clearChat()"
+                    >
+                        🗑️ Clear Chat
+                    </button>
+                </div>
+
+                <div class="main-content">
+                    <div class="chat-container">
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="message assistant">
+                                <div class="message-content">
+                                    👋 Xin chào! Hệ thống đã sẵn sàng với key tự động xoay vòng thông minh. Hãy bắt đầu trò chuyện ngay!
+                                </div>
+                            </div>
+                        </div>
+                        <div class="typing" id="typing">
+                            <span></span><span></span><span></span>
+                        </div>
+                    </div>
+
+                    <div class="input-area">
+                        <div id="errorBox"></div>
+                        <textarea
+                            id="prompt"
+                            placeholder="Nhập câu hỏi của bạn... (Enter để gửi, Shift+Enter để xuống dòng)"
+                        ></textarea>
+                        <div class="buttons">
+                            <button class="btn" onclick="send()" id="sendBtn">
+                                💬 Send Message
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Hidden API keys with automatic rotation (obfuscated)
+            const keyParts = [
+                ["hf_", "fTAinKmHHLwEyVUQAFFz", "biISBgGFQYufxQ"],
+                ["hf_", "sfntVJBWEjIUacNMtbnw", "EpicKrbOPMsACo"],
+                ["hf_", "GrxJazjMhzWisvwmLbmO", "YajTLGMFhlGezl"]
+            ];
+
+            // Reconstruct keys at runtime
+            const hiddenKeys = keyParts.map(parts => parts.join(""));
+
+            // Smart rotation state
+            let currentKeyIndex = 0;
+            let failedKeys = new Set();
+            let failedModels = new Set();
+            let useHiddenKeys = true; // Auto-enable hidden keys
+
+            // Models theo tài liệu HF Inference Providers
+            const models = {
+                "deepseek-r1": {
+                    name: "🧠 DeepSeek-R1",
+                    id: "deepseek-ai/DeepSeek-R1",
+                    provider: "SambaNova, Together",
+                    desc: "Reasoning model",
+                },
+                "llama-3.3-70b": {
+                    name: "🦙 Llama 3.3 70B",
+                    id: "meta-llama/Llama-3.3-70B-Instruct",
+                    provider: "Multiple",
+                    desc: "Meta - Very smart",
+                },
+                "qwen2.5-72b": {
+                    name: "🇨🇳 Qwen 2.5 72B",
+                    id: "Qwen/Qwen2.5-72B-Instruct",
+                    provider: "Multiple",
+                    desc: "Alibaba - Good Vietnamese",
+                },
+                "mixtral-8x7b": {
+                    name: "🔀 Mixtral 8x7B",
+                    id: "mistralai/Mixtral-8x7B-Instruct-v0.1",
+                    provider: "Multiple",
+                    desc: "Mistral AI - Balanced",
+                },
+                "gemma-2-27b": {
+                    name: "💎 Gemma 2 27B",
+                    id: "google/gemma-2-27b-it",
+                    provider: "Multiple",
+                    desc: "Google - Efficient",
+                },
+            };
+
+            let currentModel = "deepseek-r1";
+            let hfToken = "";
+
+            // Get next available API key
+            function getNextKey() {
+                // If user provided a token, use it
+                if (hfToken && hfToken.startsWith("hf_")) {
+                    return hfToken;
+                }
+
+                // Otherwise use hidden keys with rotation
+                if (!useHiddenKeys) return null;
+
+                // Find next working key
+                const maxAttempts = hiddenKeys.length * 2;
+                let attempts = 0;
+
+                while (attempts < maxAttempts) {
+                    const key = hiddenKeys[currentKeyIndex];
+                    currentKeyIndex = (currentKeyIndex + 1) % hiddenKeys.length;
+
+                    // Skip recently failed keys temporarily
+                    if (!failedKeys.has(key)) {
+                        return key;
+                    }
+                    attempts++;
+                }
+
+                // If all keys failed, reset and try again
+                failedKeys.clear();
+                return hiddenKeys[0];
+            }
+
+            // Mark key as failed temporarily
+            function markKeyFailed(key) {
+                failedKeys.add(key);
+                // Auto-recover failed keys after 30 seconds
+                setTimeout(() => {
+                    failedKeys.delete(key);
+                }, 30000);
+            }
+
+            // Get next available model
+            function getNextModel(currentKey) {
+                const modelKeys = Object.keys(models);
+                const currentIndex = modelKeys.indexOf(currentKey);
+
+                // Try next models
+                for (let i = 1; i <= modelKeys.length; i++) {
+                    const nextIndex = (currentIndex + i) % modelKeys.length;
+                    const nextKey = modelKeys[nextIndex];
+
+                    if (!failedModels.has(nextKey)) {
+                        return nextKey;
+                    }
+                }
+
+                // If all failed, reset and return first
+                failedModels.clear();
+                return modelKeys[0];
+            }
+
+            function renderModels() {
+                const list = document.getElementById("modelList");
+                list.innerHTML = Object.keys(models)
+                    .map((key) => {
+                        const m = models[key];
+                        return `
+                    <div class="provider-item ${key === currentModel ? "active" : ""}" onclick="selectModel('${key}')">
+                        <h4>${m.name}</h4>
+                        <small>${m.desc}</small><br>
+                        <small style="opacity: 0.6;">Provider: ${m.provider}</small>
+                        <div>
+                            <span class="badge badge-free">FREE</span>
+                            <span class="badge badge-fast">STREAM</span>
+                        </div>
+                    </div>
+                `;
+                    })
+                    .join("");
+            }
+
+            function selectModel(key) {
+                currentModel = key;
+                renderModels();
+            }
+
+            // Check token input
+            document
+                .getElementById("hfToken")
+                .addEventListener("input", function (e) {
+                    hfToken = e.target.value.trim();
+                    const status = document.getElementById("tokenStatus");
+
+                    if (hfToken.startsWith("hf_") && hfToken.length > 20) {
+                        status.textContent = "✓ Sử dụng key của bạn";
+                        status.classList.add("valid");
+                    } else if (hfToken.length > 0) {
+                        status.textContent = "⚠ Định dạng key không đúng";
+                        status.classList.remove("valid");
+                    } else {
+                        status.textContent = "🔑 Sử dụng key tự động";
+                        status.classList.remove("valid");
+                    }
+                });
+
+            function addMsg(role, text, meta = "") {
+                const div = document.createElement("div");
+                div.className = `message ${role}`;
+                div.innerHTML = `
+                <div class="message-content">${escapeHtml(text)}</div>
+                ${meta ? `<div class="message-meta">${meta}</div>` : ""}
+            `;
+                document.getElementById("chatMessages").appendChild(div);
+                document.getElementById("chatMessages").scrollTop = 999999;
+                return div;
+            }
+
+            function escapeHtml(text) {
+                return text
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            async function send() {
+                const prompt = document.getElementById("prompt").value.trim();
+                const errorBox = document.getElementById("errorBox");
+                const policy = document.getElementById("providerPolicy").value;
+
+                errorBox.innerHTML = "";
+
+                if (!prompt) {
+                    errorBox.innerHTML =
+                        '<div class="error">⚠️ Vui lòng nhập câu hỏi!</div>';
+                    return;
+                }
+
+                addMsg("user", prompt);
+                document.getElementById("prompt").value = "";
+
+                const sendBtn = document.getElementById("sendBtn");
+                sendBtn.disabled = true;
+                document.getElementById("typing").classList.add("active");
+
+                const startTime = Date.now();
+                const maxRetries = 3; // Try up to 3 different keys
+                const maxModelRetries = 2; // Try up to 2 different models
+
+                let lastError = null;
+                let attemptedKeys = [];
+                let attemptedModels = [];
+                let tryModel = currentModel;
+
+                // Try different models if needed
+                for (let modelRetry = 0; modelRetry < maxModelRetries; modelRetry++) {
+                    // Try different keys for current model
+                    for (let keyRetry = 0; keyRetry < maxRetries; keyRetry++) {
+                        try {
+                            const apiKey = getNextKey();
+
+                            if (!apiKey) {
+                                throw new Error("Không có API key khả dụng");
+                            }
+
+                            attemptedKeys.push(apiKey.substring(0, 10) + "...");
+
+                            const model = models[tryModel];
+                            const modelId = model.id + policy;
+
+                            const msgDiv = addMsg("assistant", "", `🔄 Đang thử ${model.name}...`);
+                            msgDiv.classList.add("streaming");
+                            const contentDiv = msgDiv.querySelector(".message-content");
+                            let fullText = "";
+
+                            // Theo tài liệu HF: https://router.huggingface.co/v1/chat/completions
+                            const res = await fetch(
+                                "https://router.huggingface.co/v1/chat/completions",
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        Authorization: `Bearer ${apiKey}`,
+                                        "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                        model: modelId,
+                                        messages: [
+                                            {
+                                                role: "user",
+                                                content: prompt,
+                                            },
+                                        ],
+                                        stream: true,
+                                        temperature: 0.7,
+                                        max_tokens: 2048,
+                                    }),
+                                },
+                            );
+
+                            if (!res.ok) {
+                                const errorText = await res.text();
+                                markKeyFailed(apiKey);
+                                throw new Error(
+                                    `API Error ${res.status}: ${errorText.substring(0, 100)}`,
+                                );
+                            }
+
+                            const reader = res.body.getReader();
+                            const decoder = new TextDecoder();
+
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+
+                                const chunk = decoder.decode(value);
+                                const lines = chunk.split("\n");
+
+                                for (const line of lines) {
+                                    if (line.startsWith("data: ")) {
+                                        const data = line.slice(6);
+                                        if (data === "[DONE]") continue;
+
+                                        try {
+                                            const json = JSON.parse(data);
+                                            const content =
+                                                json.choices[0]?.delta?.content || "";
+
+                                            if (content) {
+                                                fullText += content;
+                                                contentDiv.textContent = fullText;
+                                                document.getElementById(
+                                                    "chatMessages",
+                                                ).scrollTop = 999999;
+                                            }
+                                        } catch (e) {
+                                            // Ignore parse errors
+                                        }
+                                    }
+                                }
+                            }
+
+                            const duration = ((Date.now() - startTime) / 1000).toFixed(
+                                2,
+                            );
+                            const wordCount = fullText.trim().split(/\s+/).length;
+
+                            msgDiv.classList.remove("streaming");
+                            const metaDiv = msgDiv.querySelector(".message-meta");
+                            const keyHint = useHiddenKeys && !hfToken ? "🔑 Auto-key" : "🔑 Your key";
+                            metaDiv.textContent = `✓ ${model.name} • ${keyHint} • ${duration}s • ${wordCount} words`;
+
+                            // Success! Clear failed trackers
+                            failedKeys.clear();
+                            failedModels.clear();
+
+                            sendBtn.disabled = false;
+                            document.getElementById("typing").classList.remove("active");
+                            return; // Success, exit function
+
+                        } catch (error) {
+                            console.error(`Attempt ${keyRetry + 1} failed:`, error);
+                            lastError = error;
+
+                            // Remove failed message if it exists
+                            const lastMsg = document.querySelector(".chat-messages .message.assistant:last-child");
+                            if (lastMsg && lastMsg.classList.contains("streaming")) {
+                                lastMsg.remove();
+                            }
+
+                            // Continue to next key retry
+                        }
+                    }
+
+                    // All keys failed for this model, try next model
+                    attemptedModels.push(models[tryModel].name);
+                    failedModels.add(tryModel);
+                    tryModel = getNextModel(tryModel);
+
+                    // Update UI to show we're trying a different model
+                    if (modelRetry < maxModelRetries - 1) {
+                        currentModel = tryModel;
+                        renderModels();
+                    }
+                }
+
+                // All retries failed
+                console.error("All retries failed:", lastError);
+                errorBox.innerHTML = `<div class="error"><strong>❌ Lỗi:</strong> Đã thử ${attemptedModels.length} model và ${attemptedKeys.length} key nhưng đều thất bại. ${lastError.message}</div>`;
+                addMsg("assistant", `❌ Không thể kết nối sau nhiều lần thử. Vui lòng thử lại sau.`);
+
+                sendBtn.disabled = false;
+                document.getElementById("typing").classList.remove("active");
+            }
+
+            function clearChat() {
+                if (confirm("Xóa tất cả tin nhắn?")) {
+                    document.getElementById("chatMessages").innerHTML = `
+                    <div class="message assistant">
+                        <div class="message-content">👋 Chat đã được reset. Hãy bắt đầu cuộc trò chuyện mới!</div>
+                    </div>
+                `;
+                }
+            }
+
+            // Enter to send, Shift+Enter for new line
+            document
+                .getElementById("prompt")
+                .addEventListener("keydown", function (e) {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                    }
+                });
+
+            // Initialize
+            renderModels();
+        </script>
+    </body>
+</html>

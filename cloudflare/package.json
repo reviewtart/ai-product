@@ -1,0 +1,25 @@
+{
+  "name": "ai-api-proxy",
+  "version": "1.0.0",
+  "description": "Shared Cloudflare Worker for AI API proxying (HuggingFace + Gemini)",
+  "main": "server.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "wrangler dev --test"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "ai",
+    "huggingface",
+    "gemini",
+    "api-proxy"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
